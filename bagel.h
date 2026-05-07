@@ -1,10 +1,11 @@
 // Copyright (C) 2026 Moshe Sulamy
 
 #pragma once
-#include <cstdlib> // ADDED TO FIX COMPILER ERRORS
+//#include <cstdlib>
 #include <cstdint>
 #include <type_traits>
-#include <algorithm> // ADDED TO FIX COMPILER ERRORS
+#include <algorithm>
+#include <type_traits>
 
 namespace bagel
 {
@@ -49,179 +50,272 @@ namespace bagel
 	{
 	public:
 		int size() const { return _size; }
-		void ensure(int new_capacity)
-		{
-			if (new_capacity > _capacity)
-			{
+		void ensure(int new_capacity) {
+			if (new_capacity > _capacity) {
 				_capacity = std::max(_capacity*2, new_capacity);
 				_arr = static_cast<T*>(
 					realloc(_arr, sizeof(T)*_capacity));
 			}
 		}
-		~DynamicBag()
-		{
+		void push(const T& val) {
+			if (_size == _capacity) {
+				_capacity *= 2;
+				_arr = static_cast<T*>(
+					realloc(_arr, sizeof(T)*_capacity));
+			}
+			_arr[_size] = val;
+			++_size;
+		}
+		T pop() {
+			return _arr[--_size];
+		}
+		~DynamicBag() {
 			free(_arr);
 		}
-		void push(const T& val) { _arr[_size++] = val; }
-		T pop() { return _arr[--_size]; }
 
 		T& operator[](int idx) { return _arr[idx]; }
 		const T& operator[](int idx) const { return _arr[idx]; }
 	private:
 		T*		_arr = static_cast<T*>(malloc(sizeof(T) * N));
-		int		_capacity = N;
 		int		_size = 0;
+		int		_capacity = N;
 	};
+
 	template <class T, int N>
 	using Bag = std::conditional_t<DynamicBags, DynamicBag<T,N>, StaticBag<T,N>>;
 
-	// Forward Declarations
-	class World;
-	class Query;
+	using DeleteFunc = void (*)(ent_type);
+	template <class T> struct Register;
 
-	// Component Interface
-	template <class T>
-	struct Component { static constexpr int Bit = -1; };
-
-	// Storage Interfaces
 	template <class T>
 	class SparseStorage final : NoInstance
 	{
-		static Bag<T, 32>	_data;
-		static Bag<int, 32>	_sparse; // Maps Entity ID -> Index in _data
 	public:
-		static void attach(const ent_type e, const T& t)
-		{
-			_sparse.ensure(e.id + 1);
-			_sparse[e.id] = _data.size();
-			_data.push(t);
+		static void add(ent_type ent, const T& val) {
+			_comps.ensure(ent.id+1);
+			_comps[ent.id] = val;
 		}
-		static void detach(const ent_type e) {} // TODO: proper swap-pop removal
-		static T& get(const ent_type e) { return _data[_sparse[e.id]]; }
+		static void del(ent_type) {}
+		static T& get(ent_type ent) {
+			return _comps[ent.id];
+		}
+	private:
+		static inline Bag<T,100> _comps;
+		__attribute__((used)) static inline Register<T> _reg{nullptr};
 	};
-	template <class T> Bag<T, 32> SparseStorage<T>::_data;
-	template <class T> Bag<int, 32> SparseStorage<T>::_sparse;
-
 	template <class T>
 	class TaggedStorage final : NoInstance
 	{
 	public:
-		static void attach(const ent_type, const T&) {}
-		static void detach(const ent_type) {}
-		static T get(const ent_type) { return T{}; } // Tag components hold no data
+		static void add(ent_type, const T&) {}
+		static void del(ent_type) {}
+		static T& get(ent_type) = delete;
+	private:
+		__attribute__((used)) static inline Register<T> _reg{nullptr};
 	};
-
 	template <class T>
 	class PackedStorage final : NoInstance
 	{
-		static Bag<T, 128>	_data; // Packed storage, continuous array
 	public:
-		static void attach(const ent_type e, const T& t)
-		{
-			_data.ensure(e.id + 1);
-			_data[e.id] = t;
+		static void add(const ent_type ent, const T& val) {
+			_idToComp.ensure(ent.id+1);
+			_idToComp[ent.id] = _comps.size();
+			_comps.push(val);
+			_compToId.push(ent.id);
 		}
-		static void detach(const ent_type) {} // Entity retains unused slot
-		static T& get(const ent_type e) { return _data[e.id]; }
-	};
-	template <class T> Bag<T, 128> PackedStorage<T>::_data;
+		static void del(const ent_type ent) {
+			int idx = _idToComp[ent.id];
+			const id_type last = _compToId.pop();
 
+			_comps[idx] = _comps.pop();
+			_compToId[idx] = last;
+			_idToComp[last] = idx;
+		}
+		static T& get(const ent_type ent) {
+			return _comps[_idToComp[ent.id]];
+		}
+	private:
+		static inline Bag<T,100> _comps;
+		static inline Bag<int,100> _idToComp;
+		static inline Bag<id_type,100> _compToId;
+		__attribute__((used)) static inline Register<T> _reg{del};
+	};
 	template <class T>
 	class StackStorage final : NoInstance
 	{
-		static T			_data[128]; // Fixed size stack-based array
 	public:
-		static void attach(const ent_type e, const T& t) { _data[e.id] = t; }
-		static void detach(const ent_type) {} // Retains unused slot
-		static T& get(const ent_type e) { return _data[e.id]; }
+		static void add(const ent_type ent, const T& val) {
+			_idToComp.ensure(ent.id+1);
+			if (_freeIdx.size() > 0) {
+				const int idx = _freeIdx.pop();
+				_idToComp[ent.id] = idx;
+				_comps[idx] = val;
+			}
+			else {
+				_idToComp.ensure(ent.id+1);
+				_idToComp[ent.id] = _comps.size();
+				_comps.push(val);
+			}
+			//TODO: remember empty/full cells
+		}
+		static void del(const ent_type ent) {
+			_freeIdx.push(_idToComp[ent.id]);
+		}
+		static T& get(const ent_type ent) {
+			return _comps[_idToComp[ent.id]];
+		}
+	private:
+		static inline Bag<T,100> _comps;
+		static inline Bag<int,100> _idToComp;
+		static inline Bag<id_type,100> _freeIdx;
+		__attribute__((used)) static inline Register<T> _reg{del};
 	};
-	template <class T> T StackStorage<T>::_data[128];
 
+	template <class T>
+	struct Storage final : NoInstance {
+		using type = SparseStorage<T>;
+	};
 
-	// Default to Sparse
-	template <class T> struct Storage : NoInstance { using type = SparseStorage<T>; };
-
-	// Mask operations
-	struct Mask
+	class Mask final
 	{
-		mask_type _mask = 0;
-		bool test(const int b) const { return _mask & (1 << b); }
+	public:
+		using bit_type = mask_type;
+		static constexpr bit_type bit(const int idx) { return 1<<idx; }
+
+		void set(const bit_type b) { _mask |= b; }
+
+		void clear(const bit_type b) { _mask &= ~b; }
+		void clear() { _mask = 0; }
+
+		bool test(const bit_type b) const { return _mask & b; }
 		bool test(const Mask m) const { return (_mask & m._mask) == m._mask; }
-		void set(const int b) { _mask |= (1 << b); }
-		void clear(const int b) { _mask &= ~(1 << b); }
+
+		int ctz() const { return _mask ? __builtin_ctz(_mask) : -1; }
+	private:
+		mask_type	_mask{0};
 	};
 
-	// The ECS World
+	static inline int compCounter = -1;
+	template <class>
+	struct Component final : NoInstance
+	{
+		static inline const int				Index = ++compCounter;
+		static inline const Mask::bit_type	Bit = Mask::bit(Index);
+	};
+
 	class World final : NoInstance
 	{
-		friend class Query;
-		static Bag<mask_type, 128> _masks;
-		static int _maxId;
 	public:
-		static ent_type create()
-		{
-			_masks.ensure(_maxId + 1);
-			_masks[_maxId] = 0;
-			return ent_type{ _maxId++ };
+		static ent_type createEntity() {
+			if (_ids.size() > 0)
+				return {_ids.pop()};
+			_masks.push(Mask{});
+			return {++_maxId};
 		}
-		static void destroy(const ent_type e)
-		{
-			_masks[e.id] = 0; // Entity is now dead (0 mask)
+		static void deleteEntity(ent_type ent) {
+			Mask m = _masks[ent.id];
+			int ctz;
+			while ((ctz = m.ctz()) >= 0) {
+				if (_deleters[ctz] != nullptr)
+					_deleters[ctz](ent);
+				m.clear(Mask::bit(ctz));
+			}
+			_masks[ent.id].clear();
+			_ids.push(ent.id);
 		}
-		template <class T>
-		static void attach(const ent_type e, const T& t)
-		{
-			Storage<T>::type::attach(e, t);
-			_masks[e.id] |= (1 << Component<T>::Bit);
-		}
-		template <class T>
-		static void detach(const ent_type e)
-		{
-			Storage<T>::type::detach(e);
-			_masks[e.id] &= ~(1 << Component<T>::Bit);
-		}
-		static const Mask mask(const ent_type e)
-		{
-			return Mask{ _masks[e.id] };
-		}
-		static int maxId() { return _maxId; }
-	};
-	Bag<mask_type, 128> World::_masks;
-	int World::_maxId = 0;
 
-	// Query Builder
-	class QueryBuilder
+		static const Mask& mask(ent_type e) {
+			return _masks[e.id];
+		}
+		template <class T>
+		static T& getComponent(ent_type e) {
+			return Storage<T>::type::get(e);
+		}
+		template <class T>
+		static void addComponent(ent_type ent, const T& comp) {
+			_masks[ent.id].set(Component<T>::Bit);
+			Storage<T>::type::add(ent,comp);
+		}
+		template <class T>
+		static void delComponent(ent_type ent, const T& comp) {
+			_masks[ent.id].clear(Component<T>::Bit);
+			Storage<T>::type::del(ent,comp);
+		}
+
+		template <class T>
+		static void registerDeleter(DeleteFunc func) {
+			while (_deleters.size() < Component<T>::Index+1)
+				_deleters.push(nullptr);
+			_deleters[Component<T>::Index] = func;
+		}
+
+		static id_type maxId() { return _maxId; }
+	private:
+		static inline Bag<Mask,100>		_masks;
+		static inline Bag<id_type,100>	_ids;
+		static inline Bag<DeleteFunc,10> _deleters;
+		static inline id_type _maxId = -1;
+	};
+
+	template <class T> struct Register
 	{
-		Mask m;
+		explicit Register(const DeleteFunc func) {
+			World::registerDeleter<T>(func);
+		}
+	};
+
+	class MaskBuilder
+	{
 	public:
-		template <class T> QueryBuilder& with() { m.set(Component<T>::Bit); return *this; }
+		template <class T>
+		MaskBuilder& set() {
+			m.set(Component<T>::Bit);
+			return *this;
+		}
 		Mask build() const { return m; }
+	private:
+		Mask m;
 	};
 
-	// The Query Result/Iterator
-	class Query
+	class Entity
 	{
-		Mask _q;
-		ent_type _ent{0};
-		void advance()
-		{
-			while (_ent.id < World::maxId() && !World::mask(_ent).test(_q))
-				_ent.id++;
-		}
 	public:
-		Query(const Mask q) : _q(q) { advance(); }
-
+		Entity(ent_type ent) : _ent(ent) {}
 		ent_type entity() const { return _ent; }
+
+		static Entity create() { return World::createEntity(); }
+		void destroy() const { World::deleteEntity(_ent); }
+
 		const Mask& mask() const { return World::mask(_ent); }
 
-		template <class T>
-		T& get() const { return Storage<T>::type::get(_ent); }
+		template <class T> T& get() const {
+			return World::getComponent<T>(_ent);
+		}
+		template <class T> void add(const T& val) const {
+			World::addComponent<T>(_ent,val);
+		}
+		template <class T> void del() const {
+			World::delComponent<T>(_ent);
+		}
 
-		template <class T>
-		bool has() const { return mask().test(Component<T>::Bit); }
+		template <class T, class ...Ts> void addAll(const T& val, const Ts&... vals) const {
+			add(val);
+			if constexpr (sizeof...(Ts)>0)
+				addAll(vals...);
+		}
+		template <class T, class ...Ts> void delAll() const {
+			del<T>();
+			if constexpr (sizeof...(Ts)>0)
+				del<Ts...>();
+		}
+
+		template <class T> bool has() const { return mask().test(Component<T>::Bit); }
 		bool test(const Mask& m) const { return mask().test(m); }
 
-		bool eof() const { return _ent.id >= World::maxId(); }
-		void next() { _ent.id++; advance(); }
+		static Entity first() { return Entity{{0}}; }
+		bool eof() const { return _ent.id > World::maxId(); }
+		void next() { ++_ent.id; }
+	private:
+		ent_type _ent;
 	};
 }

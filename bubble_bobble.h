@@ -1,119 +1,79 @@
 #pragma once
+
+#include <SDL3/SDL.h>
+#include <box2d/box2d.h>
 #include "bagel.h"
-using namespace bagel;
 
 namespace bubble_bobble
 {
-    // **** Components ****
-    struct Movement
-    {
-        // preferred storage: sparse
-        // reason: Only a subset of entities move, so sparse storage avoids wasting memory on static entities.
-        float velocity_x = 0.0f;
-        float velocity_y = 0.0f;
+    using Transform = struct {
+        SDL_FPoint p;
+        float a;
     };
 
-
-    struct Position
-    {
-        // preferred storage: packed
-        // reason: Most entities have a position and systems frequently iterate over them.
-        float x = 0.0f;
-        float y = 0.0f;
+    using Drawable = struct {
+        SDL_FRect part;
+        SDL_FPoint size;
     };
 
-
-    struct Sound
-    {
-        // preferred storage: sparse
-        // reason: Only some entities trigger sounds, so sparse storage saves memory.
-        int sound_id = -1;
+    using Intent = struct {
+        bool left = false;
+        bool right = false;
+        bool jump = false;
     };
 
-
-    struct Score
-    {
-        // preferred storage: sparse
-        // reason: Only specific entities use score, so sparse storage avoids unnecessary data.
-        int points = 0;
+    using Keys = struct {
+        SDL_Scancode left;
+        SDL_Scancode right;
+        SDL_Scancode jump;
     };
 
-
-    struct Drawing
-    {
-        // preferred storage: packed
-        // reason: Most entities need to be rendered, so packed storage allows efficient iteration.
-        int sprite_id = -1;
+    using Collider = struct {
+        b2BodyId b;
     };
 
-    struct InputControl
-    {
-        // preferred storage: sparse
-        // reason: Only player-controlled entities need input handling.
-        bool enabled = true;
-    };
+    using Player = struct {};
+    using Platform = struct {};
+    using Wall = struct {};
 
-    struct BubbleShooter
+    class BubbleBobble
     {
-        // preferred storage: sparse
-        // reason: Only the player has shooting ability, so sparse storage is sufficient.
-        int cooldown = 0;
-    };
+    public:
+        BubbleBobble();
+        ~BubbleBobble();
 
-    struct Jump
-    {
-        // preferred storage: tag
-        // reason: The existence of the component is enough to mark jump interaction.
-    };
+        void run();
+        bool valid() const { return b2World_IsValid(box); }
 
-    struct Collection
-    {
-        // preferred storage: tag
-        // reason: The component only marks that an entity can be collected.
-    };
+    private:
+        static constexpr int WIN_W = 1280;
+        static constexpr int WIN_H = 720;
 
-    struct Damage
-    {
-        // preferred storage: sparse
-        // reason: Only enemies or harmful entities use damage.
-        int damage_value = 1;
-    };
+        static constexpr int FPS = 60;
+        static constexpr Uint64 GAME_FRAME = 1000 / FPS;
 
-    struct LevelChanger
-    {
-        // preferred storage: sparse
-        // reason: Only a few entities control level progression.
-        bool can_move_to_next_level = false;
-    };
+        static constexpr float RAD_TO_DEG = 57.2958f;
+        static constexpr float BOX_SCALE = 10.0f;
 
-    // **** Entities ****
-    ent_type  create_player(float x, float y);
-    ent_type  create_bubble(float x, float y, float velocity_x, float velocity_y);
-    ent_type  create_enemy(float x, float y);
-    ent_type  create_pressure_enemy(float x, float y);
-    ent_type  create_trapped_enemy(float x, float y);
-    ent_type  create_fruit(float x, float y, int points);
-    ent_type  create_bounds(float x, float y);
-    ent_type  create_map(float x, float y);
-    ent_type  create_score_display(float x, float y);
+        static constexpr float PLAYER_SPEED = 18.0f;
+        static constexpr float JUMP_SPEED = -34.0f;
+
+        void input_system() const;
+        void move_system() const;
+        void jump_system() const;
+        void box_system() const;
+        void draw_system() const;
+
+        bool is_player_on_platform(bagel::Entity player) const;
+
+        void create_platform(float x, float y, float w, float h);
+        void create_wall(float x, float y, float w, float h);
+
+        static constexpr Drawable makeDrawable(SDL_FRect part, SDL_FPoint size);
+
+        SDL_Texture* tex = nullptr;
+        SDL_Renderer* ren = nullptr;
+        SDL_Window* win = nullptr;
+        b2WorldId box = b2_nullWorldId;
+    };
 }
-
-// Storage Specializations
-
-// Packed Storage (StackStorage)
-template <> struct bagel::Storage<bubble_bobble::Position> final : bagel::NoInstance {
-    using type = bagel::StackStorage<bubble_bobble::Position>;
-};
-
-template <> struct bagel::Storage<bubble_bobble::Drawing> final : bagel::NoInstance {
-    using type = bagel::StackStorage<bubble_bobble::Drawing>;
-};
-
-// Tagged Storage (No memory footprint)
-template <> struct bagel::Storage<bubble_bobble::Jump> final : bagel::NoInstance {
-    using type = bagel::TaggedStorage<bubble_bobble::Jump>;
-};
-
-template <> struct bagel::Storage<bubble_bobble::Collection> final : bagel::NoInstance {
-    using type = bagel::TaggedStorage<bubble_bobble::Collection>;
-};

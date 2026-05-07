@@ -11,8 +11,6 @@ add_executable(${PROJECT_NAME}
         bagel.h
         bubble_bobble.h
         bubble_bobble.cpp
-        game.h
-        game.cpp
 )
 
 # Use CACHE FORCE to ensure CMake doesn't ignore our requests
