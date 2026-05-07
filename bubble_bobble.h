@@ -34,7 +34,6 @@ namespace bubble_bobble
 
     using Player = struct {};
     using Platform = struct {};
-    using Wall = struct {};
 
     class BubbleBobble
     {
@@ -61,13 +60,13 @@ namespace bubble_bobble
         void input_system() const;
         void move_system() const;
         void jump_system() const;
-        void box_system() const;
+        void box_system();
         void draw_system() const;
 
         bool is_player_on_platform(bagel::Entity player) const;
 
         void create_platform(float x, float y, float w, float h);
-        void create_wall(float x, float y, float w, float h);
+        void create_apple_wall(float x, float y, float w, float h);
 
         static constexpr Drawable makeDrawable(SDL_FRect part, SDL_FPoint size);
 
@@ -75,5 +74,7 @@ namespace bubble_bobble
         SDL_Renderer* ren = nullptr;
         SDL_Window* win = nullptr;
         b2WorldId box = b2_nullWorldId;
+
+        bool gameOver = false;
     };
 }

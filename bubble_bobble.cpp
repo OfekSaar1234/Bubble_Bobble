@@ -90,7 +90,7 @@ namespace bubble_bobble
                 const float platformLeft = platformTransform.p.x - platformDrawable.size.x / 2.0f;
                 const float platformRight = platformTransform.p.x + platformDrawable.size.x / 2.0f;
 
-                const bool closeToTop = fabs(playerBottom - platformTop) < 8.0f;
+                const bool closeToTop = fabs(playerBottom - platformTop) < 9.0f;
                 const bool insideX = playerRight > platformLeft && playerLeft < platformRight;
 
                 if (closeToTop && insideX) {
@@ -126,7 +126,7 @@ namespace bubble_bobble
         }
     }
 
-    void BubbleBobble::box_system() const
+    void BubbleBobble::box_system()
     {
         static constexpr float BOX_STEP = 1.0f / FPS;
 
@@ -148,6 +148,12 @@ namespace bubble_bobble
 
                 if (e.has<Player>()) {
                     e.get<Transform>().a = 0;
+
+                    if (e.get<Transform>().p.y > WIN_H + 80) {
+                        gameOver = true;
+                        e.destroy();
+                        return;
+                    }
                 }
             }
         }
@@ -210,7 +216,7 @@ namespace bubble_bobble
         );
     }
 
-    void BubbleBobble::create_wall(float x, float y, float w, float h)
+    void BubbleBobble::create_apple_wall(float x, float y, float w, float h)
     {
         b2BodyDef def = b2DefaultBodyDef();
         def.type = b2_staticBody;
@@ -228,9 +234,9 @@ namespace bubble_bobble
         b2CreatePolygonShape(body, &shapeDef, &wallBox);
 
         Entity::create().addAll(
-            Wall{},
+            Platform{},
             Transform{{x, y}, 0},
-            makeDrawable({156, 31, 480, 43}, {w, h}),
+            makeDrawable({13, 20, 124, 720}, {w, h}),
             Collider{body}
         );
     }
@@ -282,13 +288,13 @@ namespace bubble_bobble
             return;
         }
 
-        // ===== PLAYER =====
+        // ===== PLAYER START POSITION LIKE THE IMAGE =====
 
         b2BodyDef playerDef = b2DefaultBodyDef();
         playerDef.type = b2_dynamicBody;
         playerDef.position = {
-            430.0f / BOX_SCALE,
-            605.0f / BOX_SCALE
+            285.0f / BOX_SCALE,
+            455.0f / BOX_SCALE
         };
 
         b2BodyId playerBody = b2CreateBody(box, &playerDef);
@@ -305,7 +311,7 @@ namespace bubble_bobble
 
         Entity::create().addAll(
             Player{},
-            Transform{{430.0f, 605.0f}, 0},
+            Transform{{285.0f, 455.0f}, 0},
             makeDrawable({150, 275, 115, 135}, {52, 62}),
             Collider{playerBody},
             Intent{},
@@ -316,39 +322,40 @@ namespace bubble_bobble
             }
         );
 
-        // ===== OUTER FRAME =====
+        // ===== MAP FRAME WITH APPLES ON SIDES =====
 
-        create_wall(35, 360, 70, 720);
-        create_wall(1245, 360, 70, 720);
-        create_platform(640, 20, 1280, 40);
-        create_platform(640, 700, 1280, 40);
+        create_apple_wall(35, 360, 55, 660);
+        create_apple_wall(1245, 360, 55, 660);
 
-        // ===== MAP LIKE THE IMAGE =====
-        // מבנה קומות מלא עם פתחים בצדדים כדי לעבור בין הקומות.
+        // עליון - שלושה חלקים כמו בתמונה
+        create_platform(245, 70, 330, 28);
+        create_platform(640, 70, 210, 28);
+        create_platform(1035, 70, 330, 28);
 
-        // קומה תחתונה
-        create_platform(360, 650, 560, 26);
-        create_platform(925, 650, 560, 26);
+        // ===== MAIN MAP STRUCTURE LIKE THE IMAGE =====
 
-        // קומה 2 - פתח בצד שמאל
-        create_platform(610, 535, 850, 26);
-        create_platform(1110, 535, 210, 26);
+        // קומה עליונה פנימית
+        create_platform(385, 185, 360, 26);
+        create_platform(895, 185, 360, 26);
 
-        // קומה 3 - פתח בצד ימין
-        create_platform(225, 420, 210, 26);
-        create_platform(680, 420, 850, 26);
+        // קומה אמצעית עליונה
+        create_platform(335, 305, 460, 26);
+        create_platform(945, 305, 460, 26);
 
-        // קומה 4 - פתח בצד שמאל
-        create_platform(610, 305, 850, 26);
-        create_platform(1110, 305, 210, 26);
+        // קומה אמצעית תחתונה - פוזיציית השחקן מתחילה כאן בצד שמאל
+        create_platform(280, 425, 460, 26);
+        create_platform(945, 425, 460, 26);
 
-        // קומה 5 - פתח בצד ימין
-        create_platform(225, 190, 210, 26);
-        create_platform(680, 190, 850, 26);
+        // קומה נמוכה קצרה
+        create_platform(175, 555, 240, 26);
+        create_platform(380, 555, 90, 26);
+        create_platform(900, 555, 90, 26);
+        create_platform(1110, 555, 240, 26);
 
-        // קומה עליונה
-        create_platform(360, 85, 560, 26);
-        create_platform(925, 85, 560, 26);
+        // רצפה תחתונה עם פתחים לנפילה - אין רצפה מלאה כדי שיהיה Game Over
+        create_platform(245, 675, 330, 28);
+        create_platform(640, 675, 210, 28);
+        create_platform(1035, 675, 330, 28);
     }
 
     BubbleBobble::~BubbleBobble()
@@ -373,7 +380,7 @@ namespace bubble_bobble
         auto start = SDL_GetTicks();
         bool quit = false;
 
-        while (!quit) {
+        while (!quit && !gameOver) {
             input_system();
             move_system();
             jump_system();
