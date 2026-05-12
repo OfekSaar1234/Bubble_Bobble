@@ -9,15 +9,17 @@ namespace bubble_bobble
     const SDL_FRect BLUE_PLAYER = {645, 275, 95, 125};
     const SDL_FRect GREEN_PLAYER_OPEN = {515, 265, 105, 135};
     const SDL_FRect ENEMY_PURPLE = {175, 470, 75, 95};
-    const SDL_FRect TRAPPED_ENEMY_BROWN = {1135, 460, 110, 115};
-    const SDL_FRect LIFE_ICON = {960, 815, 55, 55};
+    const SDL_FRect TRAPPED_ENEMY_BROWN = {1112, 460, 110, 115};
+    const SDL_FRect LIFE_ICON = {940, 805, 75, 75};
     const SDL_FRect BUBBLE = {575, 630, 95, 95};
     const SDL_FRect APPLE = {1140, 645, 75, 80};
     const SDL_FRect BANANA = {1235, 635, 105, 95};
-    const SDL_FRect BEER = {1300, 485, 70, 105};
+    const SDL_FRect BEER = {1290, 485, 80, 105};
     const SDL_FRect PLATFORM = {150, 20, 500, 60};
     const SDL_FRect BOUNDS_WALL = {20, 15, 120, 730};
     const SDL_FRect BOUNDS_TILE = {10, 20, 55, 55};
+    const SDL_FRect GAME_OVER_TEXT = {55, 865, 660, 150};
+    const SDL_FRect YOU_WIN_TEXT = {845, 865, 575, 150};
     const SDL_FRect DIGITS[10] = {
         {925, 128, 45, 55},    // 0
         {1000, 128, 35, 55},   // 1
@@ -31,6 +33,8 @@ namespace bubble_bobble
         {1225, 205, 45, 55}    // 9
     };
 
+    const SDL_FRect FRUIT_SPRITES[] = {APPLE,BANANA,BEER};
+
     constexpr uint64_t PLAYER_CATEGORY   = 0x0001;
     constexpr uint64_t PLATFORM_CATEGORY = 0x0002;
     constexpr uint64_t WALL_CATEGORY     = 0x0004;
@@ -40,6 +44,7 @@ namespace bubble_bobble
     constexpr float JUMP_HEIGHT = -11.0f;
     constexpr float SCALE = 30.0f;
     static bool game_over= false;
+    static int enemies_created = 0;
     constexpr int MAX_ENEMIES = 8;
     constexpr int ENEMY_RELOCATE_TIME = 600;
 
@@ -465,7 +470,7 @@ namespace bubble_bobble
                 drawing.sprite = GREEN_PLAYER_OPEN;
                 player.open_mouth_timer--;
             }
-            if (player.eating_timer > 0)
+            else if (player.eating_timer > 0)
             {
                 player.eating_timer--;
                 drawing.sprite = GREEN_PLAYER_OPEN;
@@ -510,8 +515,8 @@ namespace bubble_bobble
             }
         }
 
-        float x = 40.0f;
-        float y = 30.0f;
+        float x = 50.0f;
+        float y = 60.0f;
 
         for (int i = count - 1; i >= 0; --i)
         {
@@ -548,7 +553,7 @@ namespace bubble_bobble
         for (int i = 0; i < lives; i++)
         {
             SDL_FRect dst = {
-                1040.0f + i * 55.0f,
+                1040.0f + i * 60.0f,
                 40.0f,
                 45.0f,
                 45.0f
@@ -845,15 +850,14 @@ namespace bubble_bobble
                 player_component.lives--;
                 player_component.invincible_timer = 90;
 
-                Position& player_position =
-                    player.get<Position>();
+              //  Position& player_position =player.get<Position>();
 
-                player_position.x = 300.0f;
-                player_position.y = 430.0f;
+              //  player_position.x = 120.0f;
+              //  player_position.y = 500.0f;
 
                 b2Body_SetTransform(
                     player_physics.body,
-                    {300.0f / SCALE, 430.0f / SCALE},
+                    {390.0f / SCALE, 85.0f / SCALE},
                     b2Body_GetRotation(player_physics.body)
                 );
 
@@ -902,12 +906,6 @@ namespace bubble_bobble
                     player.get<Player>();
 
                 player_component.eating_timer = 20;
-
-                SDL_Log(
-                    "Score: %d",
-                    player_score.points
-                );
-
                 fruit_to_destroy = fruit;
             }
         }
@@ -936,8 +934,8 @@ namespace bubble_bobble
                 Position& trapped_position =
                     trapped.get<Position>();
 
-                fruit_x = trapped_position.x;
-                fruit_y = trapped_position.y;
+                fruit_x = random_between(100.0f, 1100.0f);
+                fruit_y = random_between(100.0f, 580.0f);
 
                 should_create_fruit = true;
                 trapped_to_destroy = trapped;
@@ -1054,12 +1052,13 @@ namespace bubble_bobble
                 enemy_count++;
         }
 
-        if (enemy_count < MAX_ENEMIES)
+        if (enemy_count < MAX_ENEMIES && enemies_created < MAX_ENEMIES)
         {
             float x = random_between(100.0f, 1100.0f);
             float y = random_between(80.0f, 500.0f);
 
             create_enemy(x, y, physics_world);
+            enemies_created++;
         }
 
         spawn_timer = static_cast<int>(
@@ -1073,8 +1072,7 @@ namespace bubble_bobble
 
     void game_init(b2WorldId physics_world)
     {
-        create_player(120.0f, 500.0f, physics_world);
-
+        create_player(390.0f, 85.0f, physics_world);
         // screen bounds
         create_bounds(0.0f, 0.0f, 40.0f, 720.0f, physics_world);
         create_bounds(1240.0f, 0.0f, 40.0f, 720.0f, physics_world);
@@ -1098,8 +1096,9 @@ namespace bubble_bobble
         create_enemy(300.0f, 200.0f, physics_world);
         create_enemy(700.0f, 200.0f, physics_world);
         create_enemy(920.0f, 330.0f, physics_world);
+        enemies_created+=3;
 
-        create_score_display(30.0f, 20.0f);
+        create_score_display(30.0f, 50.0f);
     }
     // **** Entities ****
     ent_type create_player(float x, float y, b2WorldId physics_world)
@@ -1311,9 +1310,7 @@ namespace bubble_bobble
             physics_world,
             &body_def
         );
-        b2Polygon fruit_box = b2MakeBox(
-    25.0f / SCALE,
-    25.0f / SCALE
+        b2Polygon fruit_box = b2MakeBox(25.0f / SCALE,25.0f / SCALE
 );
 
         b2ShapeDef shape_def = b2DefaultShapeDef();
@@ -1326,10 +1323,14 @@ namespace bubble_bobble
             &shape_def,
             &fruit_box
         );
+        const int fruit_count = sizeof(FRUIT_SPRITES) / sizeof(FRUIT_SPRITES[0]);
+        int index = static_cast<int>(SDL_randf() * fruit_count);
+
+        SDL_FRect fruit_sprite =FRUIT_SPRITES[index];
 
         fruit.addAll(
             Position{x, y},
-            Drawing{BANANA, 60.0f, 55.0f},
+            Drawing{fruit_sprite, 55.0f, 55.0f},
             Collection{},
             Score{points},
             Sound{-1},
