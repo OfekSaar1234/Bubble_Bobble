@@ -41,7 +41,7 @@ namespace bubble_bobble
         if (!init())
             return;
 
-        while (running)
+        while (running && !is_game_over())
         {
             handle_events();
             update();
@@ -70,6 +70,7 @@ namespace bubble_bobble
 
         input_system(keyboard_state);
         enemy_ai_system();
+        enemy_spawn_system(physics_world);
         shooting_bubble_system(keyboard_state, physics_world);
         movement_system();
         physics_system(physics_world);

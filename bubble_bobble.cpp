@@ -9,6 +9,8 @@ namespace bubble_bobble
     const SDL_FRect BLUE_PLAYER = {645, 275, 95, 125};
     const SDL_FRect GREEN_PLAYER_OPEN = {515, 265, 105, 135};
     const SDL_FRect ENEMY_PURPLE = {175, 470, 75, 95};
+    const SDL_FRect TRAPPED_ENEMY_BROWN = {1135, 460, 110, 115};
+    const SDL_FRect LIFE_ICON = {960, 815, 55, 55};
     const SDL_FRect BUBBLE = {575, 630, 95, 95};
     const SDL_FRect APPLE = {1140, 645, 75, 80};
     const SDL_FRect BANANA = {1235, 635, 105, 95};
@@ -29,8 +31,22 @@ namespace bubble_bobble
         {1225, 205, 45, 55}    // 9
     };
 
-    constexpr float JUMP_FORCE = -8.0f;
+    constexpr uint64_t PLAYER_CATEGORY   = 0x0001;
+    constexpr uint64_t PLATFORM_CATEGORY = 0x0002;
+    constexpr uint64_t WALL_CATEGORY     = 0x0004;
+
+    constexpr float PLAYER_SPEED = 7.0f;
+    constexpr float ENEMY_SPEED = 4.5f;
+    constexpr float JUMP_HEIGHT = -11.0f;
     constexpr float SCALE = 30.0f;
+    static bool game_over= false;
+    constexpr int MAX_ENEMIES = 8;
+    constexpr int ENEMY_RELOCATE_TIME = 600;
+
+    float random_between(float min, float max)
+    {
+        return min + SDL_randf() * (max - min);
+    }
 
     // **** Systems ****
     void movement_system()
@@ -52,6 +68,21 @@ namespace bubble_bobble
             PhysicsBody& physics = e.get<PhysicsBody>();
 
             b2Vec2 velocity =b2Body_GetLinearVelocity(physics.body);
+            if (e.has<Player>())
+            {
+                b2Filter filter = b2Shape_GetFilter(physics.shape);
+
+                if (velocity.y < -0.1f)
+                {
+                    filter.maskBits =UINT64_MAX &~PLATFORM_CATEGORY;
+                }
+                else
+                {
+                    filter.maskBits =UINT64_MAX;
+                }
+
+                b2Shape_SetFilter(physics.shape, filter);
+            }
 
             velocity.x = movement.velocity_x;
 
@@ -87,25 +118,25 @@ namespace bubble_bobble
             movement.velocity_x = 0.0f;
 
             if (keyboard_state[SDL_SCANCODE_LEFT]) {
-                movement.velocity_x = -5.0f;
+                movement.velocity_x = PLAYER_SPEED * -1.0f;
                 direction.dir = -1;
             }
 
             if (keyboard_state[SDL_SCANCODE_RIGHT] ) {
-                movement.velocity_x = 5.0f;
+                movement.velocity_x = PLAYER_SPEED;
                 direction.dir = 1;
             }
             b2Vec2 velocity = b2Body_GetLinearVelocity(physics.body);
             velocity.x = movement.velocity_x;
             b2Body_SetLinearVelocity(physics.body, velocity);
 
-            if (keyboard_state[SDL_SCANCODE_SPACE] && fabs(velocity.y) < 0.01f)
+            if (keyboard_state[SDL_SCANCODE_SPACE] && fabs(velocity.y) < 0.1f)
             {
                 b2Vec2 velocity = b2Body_GetLinearVelocity(physics.body);
 
-                if (velocity.y > -0.1f && velocity.y < 0.1f)
+                if (velocity.y > -0.1f && velocity.y < 0.001f)
                 {
-                    velocity.y = -8.0f;
+                    velocity.y = JUMP_HEIGHT;
                     b2Body_SetLinearVelocity(physics.body, velocity);
                 }
             }
@@ -139,7 +170,7 @@ namespace bubble_bobble
                 create_bubble(
                     position.x + direction.dir * 70.0f,
                     position.y + 35.0f,
-                    direction.dir * 5.0f,
+                    direction.dir * 7.0f,
                     0.0f,
                     physics_world
                 );
@@ -502,71 +533,160 @@ namespace bubble_bobble
 
             x += 34.0f;
         }
-    }
-    void bubble_cleanup_system()
-    {
-        Mask bubble_mask = MaskBuilder{}
-        .set<Position>()
-        .set<Bubble>()
-        .build();
+
+        int lives = 0;
 
         for (Entity e = Entity::first(); !e.eof(); e.next())
         {
-            if (!e.test(bubble_mask))
+            if (!e.test(player_mask))
                 continue;
 
-            Position& position = e.get<Position>();
-
-            if (position.x > 1280.0f || position.x < -100.0f)
-                destroy_game_entity(e);
+            lives = e.get<Player>().lives;
+            break;
         }
-    }
-    void render_system(SDL_Renderer* renderer, SDL_Texture* sprite_sheet)
-    {
-        Mask render_mask = MaskBuilder{}
-            .set<Position>()
-            .set<Drawing>()
-            .build();
 
-        for (Entity e = Entity::first(); !e.eof(); e.next())
+        for (int i = 0; i < lives; i++)
         {
-            if (!e.test(render_mask))
-                continue;
-
-            Position& position = e.get<Position>();
-            Drawing& drawing = e.get<Drawing>();
-
             SDL_FRect dst = {
-                position.x,
-                position.y,
-                drawing.width,
-                drawing.height
+                1040.0f + i * 55.0f,
+                40.0f,
+                45.0f,
+                45.0f
             };
 
-
-            //////CHECK IF REPLACE THIS PART WITH IMAGE SPRITE SHEET EITH LEFT DIRECTION/////////////
-
-            SDL_FlipMode flip = SDL_FLIP_NONE;
-
-            if (e.has<Direction>())
-            {
-                Direction& direction = e.get<Direction>();
-
-                if (direction.dir == -1)
-                    flip = SDL_FLIP_HORIZONTAL;
-            }
-
-            SDL_RenderTextureRotated(
+            SDL_RenderTexture(
                 renderer,
                 sprite_sheet,
-                &drawing.sprite,
-                &dst,
-                0.0,
-                nullptr,
-                flip
+                &LIFE_ICON,
+                &dst
             );
         }
     }
+    void bubble_cleanup_system()
+    {
+        static const Mask bubble_mask = MaskBuilder{}
+        .set<Bubble>()
+        .build();
+
+        Entity bubble_to_destroy{{-1}};
+
+        for (Entity bubble = Entity::first();
+             !bubble.eof();
+             bubble.next())
+        {
+            if (!bubble.test(bubble_mask))
+                continue;
+
+            Bubble& bubble_component =
+                bubble.get<Bubble>();
+
+            bubble_component.lifetime--;
+
+            if (bubble_component.lifetime <= 0)
+            {
+                bubble_to_destroy = bubble;
+                break;
+            }
+        }
+
+        if (bubble_to_destroy.entity().id != -1)
+        {
+            destroy_game_entity(
+                bubble_to_destroy
+            );
+        }
+    }
+    void render_system(SDL_Renderer* renderer, SDL_Texture* sprite_sheet)
+{
+    Mask render_mask = MaskBuilder{}
+        .set<Position>()
+        .set<Drawing>()
+        .build();
+
+    Mask player_mask = MaskBuilder{}
+        .set<Player>()
+        .build();
+
+    // draw everything except player
+    for (Entity e = Entity::first(); !e.eof(); e.next())
+    {
+        if (!e.test(render_mask))
+            continue;
+
+        if (e.test(player_mask))
+            continue;
+
+        Position& position = e.get<Position>();
+        Drawing& drawing = e.get<Drawing>();
+
+        SDL_FRect dst = {
+            position.x,
+            position.y,
+            drawing.width,
+            drawing.height
+        };
+
+        SDL_FlipMode flip = SDL_FLIP_NONE;
+
+        if (e.has<Direction>())
+        {
+            Direction& direction = e.get<Direction>();
+
+            if (direction.dir == -1)
+                flip = SDL_FLIP_HORIZONTAL;
+        }
+
+        SDL_RenderTextureRotated(
+            renderer,
+            sprite_sheet,
+            &drawing.sprite,
+            &dst,
+            0.0,
+            nullptr,
+            flip
+        );
+    }
+
+    // draw player last
+    for (Entity e = Entity::first(); !e.eof(); e.next())
+    {
+        if (!e.test(render_mask))
+            continue;
+
+        if (!e.test(player_mask))
+            continue;
+
+        Position& position = e.get<Position>();
+        Drawing& drawing = e.get<Drawing>();
+
+        SDL_FRect dst = {
+            position.x,
+            position.y,
+            drawing.width,
+            drawing.height
+        };
+
+        SDL_FlipMode flip = SDL_FLIP_NONE;
+
+        if (e.has<Direction>())
+        {
+            Direction& direction = e.get<Direction>();
+
+            if (direction.dir == -1)
+                flip = SDL_FLIP_HORIZONTAL;
+        }
+
+        SDL_RenderTextureRotated(
+            renderer,
+            sprite_sheet,
+            &drawing.sprite,
+            &dst,
+            0.0,
+            nullptr,
+            flip
+        );
+    }
+}
     void physics_system(b2WorldId physics_world)
     {
         b2World_Step(physics_world, 1.0f / 60.0f, 4);
@@ -725,11 +845,6 @@ namespace bubble_bobble
                 player_component.lives--;
                 player_component.invincible_timer = 90;
 
-                SDL_Log(
-                    "Player hit! Lives: %d",
-                    player_component.lives
-                );
-
                 Position& player_position =
                     player.get<Position>();
 
@@ -748,7 +863,7 @@ namespace bubble_bobble
                 );
 
                 if (player_component.lives <= 0)
-                    SDL_Log("Game Over");
+                    game_over = true;
             }
         }
 
@@ -855,6 +970,7 @@ namespace bubble_bobble
         static const Mask mask = MaskBuilder{}
         .set<Enemy>()
         .set<Movement>()
+        .set<PhysicsBody>()
         .build();
 
         for (Entity enemy = Entity::first(); !enemy.eof(); enemy.next())
@@ -863,23 +979,101 @@ namespace bubble_bobble
                 continue;
 
             Movement& movement = enemy.get<Movement>();
+            Enemy& enemy_component = enemy.get<Enemy>();
+            PhysicsBody& physics = enemy.get<PhysicsBody>();
 
             if (SDL_randf() < 0.01f)
             {
                 if (SDL_randf() < 0.5f)
-                    movement.velocity_x = 2.0f;
+                    movement.velocity_x = ENEMY_SPEED;
                 else
-                    movement.velocity_x = -2.0f;
+                    movement.velocity_x = ENEMY_SPEED * -1.0f;
+            }
+
+            enemy_component.relocate_timer--;
+
+            if (enemy_component.relocate_timer <= 0)
+            {
+                const float enemy_width = 50.0f;
+                const float enemy_height = 60.0f;
+
+                float positions[][2] = {
+                    {250.0f, 480.0f},
+                    {700.0f, 480.0f},
+                    {300.0f, 350.0f},
+                    {850.0f, 350.0f},
+                    {520.0f, 230.0f},
+                    {900.0f, 230.0f}
+                };
+
+                int index = static_cast<int>(SDL_randf() * 6.0f);
+
+                float x = positions[index][0];
+                float y = positions[index][1];
+
+                b2Body_SetTransform(
+                    physics.body,
+                    {
+                        (x + enemy_width / 2.0f) / SCALE,
+                        (y + enemy_height / 2.0f) / SCALE
+                    },
+                    b2Body_GetRotation(physics.body)
+                );
+
+                b2Body_SetLinearVelocity(
+                    physics.body,
+                    {0.0f, 0.0f}
+                );
+
+                enemy_component.relocate_timer = ENEMY_RELOCATE_TIME;
             }
         }
     }
+    bool is_game_over()
+    {
+        return game_over;
+    }
+    void enemy_spawn_system(b2WorldId physics_world)
+    {
+        static int spawn_timer = 180;
+
+        spawn_timer--;
+
+        if (spawn_timer > 0)
+            return;
+
+        int enemy_count = 0;
+
+        static const Mask enemy_mask = MaskBuilder{}
+        .set<Enemy>()
+        .build();
+
+        for (Entity e = Entity::first(); !e.eof(); e.next())
+        {
+            if (e.test(enemy_mask))
+                enemy_count++;
+        }
+
+        if (enemy_count < MAX_ENEMIES)
+        {
+            float x = random_between(100.0f, 1100.0f);
+            float y = random_between(80.0f, 500.0f);
+
+            create_enemy(x, y, physics_world);
+        }
+
+        spawn_timer = static_cast<int>(
+            random_between(180.0f, 420.0f)
+        );
+    }
+
 
     void sound_system() {}
     void level_progression_system() {}
 
     void game_init(b2WorldId physics_world)
     {
-        create_player(120.0f, 560.0f, physics_world);
+        create_player(120.0f, 500.0f, physics_world);
 
         // screen bounds
         create_bounds(0.0f, 0.0f, 40.0f, 720.0f, physics_world);
@@ -888,22 +1082,22 @@ namespace bubble_bobble
         create_bounds(0.0f, 680.0f, 1280.0f, 40.0f, physics_world);
 
         // platforms
-        create_platform(120.0f, 600.0f, 360.0f, 40.0f, physics_world);
-        create_platform(600.0f, 600.0f, 360.0f, 40.0f, physics_world);
+        create_platform(200.0f, 540.0f, 360.0f, 40.0f, physics_world);
+        create_platform(700.0f, 540.0f, 360.0f, 40.0f, physics_world);
 
-        create_platform(220.0f, 470.0f, 300.0f, 40.0f, physics_world);
-        create_platform(760.0f, 470.0f, 300.0f, 40.0f, physics_world);
+        create_platform(220.0f, 410.0f, 300.0f, 40.0f, physics_world);
+        create_platform(760.0f, 410.0f, 300.0f, 40.0f, physics_world);
 
-        create_platform(120.0f, 340.0f, 280.0f, 40.0f, physics_world);
-        create_platform(500.0f, 340.0f, 280.0f, 40.0f, physics_world);
-        create_platform(880.0f, 340.0f, 280.0f, 40.0f, physics_world);
+        create_platform(170.0f, 280.0f, 280.0f, 40.0f, physics_world);
+        create_platform(600.0f, 280.0f, 280.0f, 40.0f, physics_world);
+        create_platform(950.0f, 280.0f, 280.0f, 40.0f, physics_world);
 
-        create_platform(360.0f, 220.0f, 560.0f, 40.0f, physics_world);
+        create_platform(360.0f, 160.0f, 560.0f, 40.0f, physics_world);
 
         // enemies
-        create_enemy(300.0f, 260.0f, physics_world);
-        create_enemy(700.0f, 260.0f, physics_world);
-        create_enemy(920.0f, 390.0f, physics_world);
+        create_enemy(300.0f, 200.0f, physics_world);
+        create_enemy(700.0f, 200.0f, physics_world);
+        create_enemy(920.0f, 330.0f, physics_world);
 
         create_score_display(30.0f, 20.0f);
     }
@@ -920,6 +1114,8 @@ namespace bubble_bobble
 
         b2Polygon box = b2MakeBox(30.0f / SCALE,37.5f / SCALE);
         b2ShapeDef shape_def = b2DefaultShapeDef();
+        shape_def.filter.categoryBits =PLAYER_CATEGORY;
+        shape_def.filter.maskBits =UINT64_MAX;
         shape_def.density = 1.0f;  // צפיפות (כובד)
         shape_def.material.friction = 0.3f; // חיכוך
         shape_def.enableSensorEvents = true;
@@ -981,7 +1177,7 @@ namespace bubble_bobble
             Movement{velocity_x, velocity_y},
             Drawing{BUBBLE, 60.0f, 60.0f},
             Sound{-1},
-            Bubble{},
+            Bubble{240},
             PhysicsBody{body ,b2_nullShapeId}
         );
         return bubble.entity();
@@ -1034,7 +1230,7 @@ namespace bubble_bobble
             Movement{2.0f, 0.0f},
             Drawing{ENEMY_PURPLE, 50.0f, 60.0f},
             Damage{1},
-            Enemy{},
+            Enemy{600},
             PhysicsBody{body, b2_nullShapeId}
         );
 
@@ -1087,11 +1283,10 @@ namespace bubble_bobble
             &shape_def,
             &circle
         );
-
         trapped_enemy.addAll(
             Position{x, y},
             Movement{0.0f, 0.0f},
-            Drawing{BUBBLE, 90.0f, 90.0f},
+            Drawing{TRAPPED_ENEMY_BROWN, 90.0f, 90.0f},
             TrappedEnemy{},
             Jump{},
             PhysicsBody{body, b2_nullShapeId}
@@ -1167,6 +1362,8 @@ namespace bubble_bobble
         );
 
         b2ShapeDef shape_def = b2DefaultShapeDef();
+        shape_def.filter.categoryBits =WALL_CATEGORY;
+        shape_def.filter.maskBits =UINT64_MAX;
 
         b2CreatePolygonShape(
             body,
@@ -1248,6 +1445,8 @@ namespace bubble_bobble
         );
 
         b2ShapeDef shape_def = b2DefaultShapeDef();
+        shape_def.filter.categoryBits =PLATFORM_CATEGORY;
+        shape_def.filter.maskBits =UINT64_MAX;
 
         b2CreatePolygonShape(
             body,

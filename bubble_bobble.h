@@ -75,14 +75,15 @@ namespace bubble_bobble
 
     struct Bubble
     {
-
+        int lifetime = 240;
     };
+
     struct TrappedEnemy
     {
     };
     struct Enemy
     {
-
+        int relocate_timer = 600; // 10 seconds * 60 FPS
     };
     struct Player
     {
@@ -133,8 +134,12 @@ namespace bubble_bobble
     extern const SDL_FRect BEER;
     extern const SDL_FRect PLATFORM;
     extern const SDL_FRect BOUNDS_WALL;
+    extern const SDL_FRect LIFE_ICON;
+    extern const SDL_FRect TRAPPED_ENEMY;
     extern const SDL_FRect BOUNDS_TILE;
     extern const SDL_FRect DIGITS[10];
+
+
 
     // **** Systems ****
     void movement_system();
@@ -152,7 +157,9 @@ namespace bubble_bobble
     void destroy_game_entity(Entity e);
     void game_init(b2WorldId physics_world);
     void sensor_events_system(b2WorldId physics_world);
+    void enemy_spawn_system(b2WorldId physics_world);
     void enemy_ai_system();
+
 
     void sound_system();
     void level_progression_system();
@@ -164,8 +171,116 @@ namespace bubble_bobble
     ent_type  create_pressure_enemy(float x, float y);
     ent_type  create_trapped_enemy(float x, float y, b2WorldId physics_world);
     ent_type  create_fruit(float x, float y, int points,b2WorldId physics_world);
-    ent_type create_platform(float x,float y,float width,float height,b2WorldId physics_world);
+    ent_type  create_platform(float x,float y,float width,float height,b2WorldId physics_world);
     ent_type  create_bounds(float x, float y, float width, float height,b2WorldId physics_world);
     ent_type  create_map(float x, float y, b2WorldId physics_world);
     ent_type  create_score_display(float x, float y);
+    bool is_game_over();
 }
+
+    // **** Storage Types ****
+
+    // frequently iterated every frame
+    template <>
+    struct bagel::Storage<bubble_bobble::Position> final : NoInstance
+    {
+        using type = PackedStorage<bubble_bobble::Position>;
+    };
+
+    template <>
+    struct bagel::Storage<bubble_bobble::Drawing> final : NoInstance
+    {
+        using type = PackedStorage<bubble_bobble::Drawing>;
+    };
+
+    // physics and movement are accessed constantly
+    template <>
+    struct bagel::Storage<bubble_bobble::Movement> final : NoInstance
+    {
+        using type = PackedStorage<bubble_bobble::Movement>;
+    };
+
+    template <>
+    struct bagel::Storage<bubble_bobble::PhysicsBody> final : NoInstance
+    {
+        using type = PackedStorage<bubble_bobble::PhysicsBody>;
+    };
+
+    // only some entities have these
+    template <>
+    struct bagel::Storage<bubble_bobble::Sound> final : NoInstance
+    {
+        using type = SparseStorage<bubble_bobble::Sound>;
+    };
+
+    template <>
+    struct bagel::Storage<bubble_bobble::InputControl> final : NoInstance
+    {
+        using type = SparseStorage<bubble_bobble::InputControl>;
+    };
+
+    template <>
+    struct bagel::Storage<bubble_bobble::BubbleShooter> final : NoInstance
+    {
+        using type = SparseStorage<bubble_bobble::BubbleShooter>;
+    };
+
+    template <>
+    struct bagel::Storage<bubble_bobble::Damage> final : NoInstance
+    {
+        using type = SparseStorage<bubble_bobble::Damage>;
+    };
+
+    template <>
+    struct bagel::Storage<bubble_bobble::Direction> final : NoInstance
+    {
+        using type = SparseStorage<bubble_bobble::Direction>;
+    };
+
+    template <>
+    struct bagel::Storage<bubble_bobble::Player> final : NoInstance
+    {
+        using type = SparseStorage<bubble_bobble::Player>;
+    };
+
+    template <>
+    struct bagel::Storage<bubble_bobble::Score> final : NoInstance
+    {
+        using type = SparseStorage<bubble_bobble::Score>;
+    };
+
+    template <>
+    struct bagel::Storage<bubble_bobble::LevelChanger> final : NoInstance
+    {
+        using type = SparseStorage<bubble_bobble::LevelChanger>;
+    };
+
+    // tags only
+    template <>
+    struct bagel::Storage<bubble_bobble::Jump> final : NoInstance
+    {
+        using type = TaggedStorage<bubble_bobble::Jump>;
+    };
+
+    template <>
+    struct bagel::Storage<bubble_bobble::Collection> final : NoInstance
+    {
+        using type = TaggedStorage<bubble_bobble::Collection>;
+    };
+
+    template <>
+    struct bagel::Storage<bubble_bobble::Bubble> final : bagel::NoInstance
+    {
+        using type = bagel::SparseStorage<bubble_bobble::Bubble>;
+    };
+    template <>
+    struct bagel::Storage<bubble_bobble::Enemy> final : bagel::NoInstance
+    {
+        using type = bagel::StackStorage<bubble_bobble::Enemy>;
+    };
+
+    template <>
+    struct bagel::Storage<bubble_bobble::TrappedEnemy> final : NoInstance
+    {
+        using type = TaggedStorage<bubble_bobble::TrappedEnemy>;
+    };
