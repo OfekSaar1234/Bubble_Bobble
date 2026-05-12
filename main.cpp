@@ -1,12 +1,9 @@
-#include "bubble_bobble.h"
+#include "Game.h"
 
 int main()
 {
-    bubble_bobble::BubbleBobble game;
-
-    if (game.valid()) {
-        game.run();
-    }
+    bubble_bobble::Game game;
+    game.run();
 
     return 0;
 }

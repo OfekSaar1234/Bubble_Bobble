@@ -1,28 +1,26 @@
 #pragma once
+#include <box2d/box2d.h>
 #include <SDL3/SDL.h>
-#include "bagel.h"
-#include "bubble_bobble.h"
 
-class BubbleBobbleGame {
-public:
-    BubbleBobbleGame();
-    ~BubbleBobbleGame();
+namespace bubble_bobble
+{
+    class Game
+    {
+    public:
+        bool init();
+        void run();
+        void clean();
 
-    void run();
-    bool valid() const { return ren != nullptr; }
+    private:
+        SDL_Window* window = nullptr;
+        SDL_Renderer* renderer = nullptr;
+        SDL_Texture* sprite_sheet = nullptr;
+        b2WorldId physics_world = b2_nullWorldId;
 
-private:
-    static constexpr int WIN_W = 800;
-    static constexpr int WIN_H = 600;
-    static constexpr int FPS = 60;
-    static constexpr Uint64 GAME_FRAME = 1000 / FPS;
+        bool running = true;
 
-    // Systems
-    void input_system() const;
-    void movement_system() const;
-    void render_system() const;
-
-    SDL_Texture* tex = nullptr;
-    SDL_Renderer* ren = nullptr;
-    SDL_Window* win = nullptr;
-};
+        void handle_events();
+        void update();
+        void render();
+    };
+}

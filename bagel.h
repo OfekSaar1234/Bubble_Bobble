@@ -10,7 +10,7 @@
 namespace bagel
 {
 	/**** Parameters ****/
-	constexpr int	MaxComponents = 6;
+	constexpr int	MaxComponents = 16;
 	constexpr bool	DynamicBags = true;
 	/** end parameters **/
 
