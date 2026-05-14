@@ -74,16 +74,10 @@ namespace bubble_bobble
         shooting_bubble_system(keyboard_state, physics_world);
         movement_system();
         physics_system(physics_world);
-
         sensor_events_system(physics_world);
-
         player_visual_system();
         bubble_cleanup_system();
 
-        //jump_system(physics_world);
-        // collection_system(physics_world);
-        //damage_system(physics_world);
-        // capture_system(physics_world);
     }
 
     void Game::render()

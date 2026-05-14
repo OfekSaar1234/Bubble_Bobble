@@ -14,8 +14,6 @@ namespace bubble_bobble
         float velocity_x = 0.0f;
         float velocity_y = 0.0f;
     };
-
-
     struct Position
     {
         // preferred storage: packed
@@ -23,24 +21,12 @@ namespace bubble_bobble
         float x = 0.0f;
         float y = 0.0f;
     };
-
-
-    struct Sound
-    {
-        // preferred storage: sparse
-        // reason: Only some entities trigger sounds, so sparse storage saves memory.
-        int sound_id = -1;
-    };
-
-
     struct Score
     {
         // preferred storage: sparse
         // reason: Only specific entities use score, so sparse storage avoids unnecessary data.
         int points = 0;
     };
-
-
     struct Drawing
     {
         // preferred storage: packed
@@ -48,36 +34,31 @@ namespace bubble_bobble
         // The part of the sprite sheet we want to draw
         SDL_FRect sprite;
 
-        // The size on the screen
+        // the size on the screen
         float width = 0.0f;
         float height = 0.0f;
     };
-
     struct InputControl
     {
         // preferred storage: sparse
         // reason: Only player-controlled entities need input handling.
         bool enabled = true;
     };
-
     struct BubbleShooter
     {
         // preferred storage: sparse
         // reason: Only the player has shooting ability, so sparse storage is sufficient.
         int cooldown = 0;
     };
-
     struct Jump
     {
         // preferred storage: tag
         // reason: The existence of the component is enough to mark jump interaction.
     };
-
     struct Bubble
     {
         int lifetime = 240;
     };
-
     struct TrappedEnemy
     {
     };
@@ -97,21 +78,12 @@ namespace bubble_bobble
         // preferred storage: tag
         // reason: The component only marks that an entity can be collected.
     };
-
     struct Damage
     {
         // preferred storage: sparse
         // reason: Only enemies or harmful entities use damage.
         int damage_value = 1;
     };
-
-    struct LevelChanger
-    {
-        // preferred storage: sparse
-        // reason: Only a few entities control level progression.
-        bool can_move_to_next_level = false;
-    };
-
     struct Direction
     {
         int dir = 1; // 1 = right, -1 = left
@@ -125,7 +97,6 @@ namespace bubble_bobble
 
     // **** Sprites ****
     extern const SDL_FRect GREEN_PLAYER;
-    extern const SDL_FRect BLUE_PLAYER;
     extern const SDL_FRect GREEN_PLAYER_OPEN;
     extern const SDL_FRect ENEMY_PURPLE;
     extern const SDL_FRect BUBBLE;
@@ -133,12 +104,10 @@ namespace bubble_bobble
     extern const SDL_FRect BANANA;
     extern const SDL_FRect BEER;
     extern const SDL_FRect PLATFORM;
-    extern const SDL_FRect BOUNDS_WALL;
     extern const SDL_FRect LIFE_ICON;
-    extern const SDL_FRect TRAPPED_ENEMY;
+    extern const SDL_FRect TRAPPED_ENEMY_BROWN;
     extern const SDL_FRect BOUNDS_TILE;
     extern const SDL_FRect DIGITS[10];
-
 
 
     // **** Systems ****
@@ -146,23 +115,19 @@ namespace bubble_bobble
     void physics_system(b2WorldId physics_world);
     void input_system(const bool* keyboard_state);
     void shooting_bubble_system(const bool* keyboard_state,b2WorldId physics_world);
-    void capture_system(b2WorldId physics_world);
-    void jump_system(b2WorldId physics_world);
-    void collection_system(b2WorldId physics_world);
-    void damage_system(b2WorldId physics_world);
     void score_system(SDL_Renderer* renderer, SDL_Texture* sprite_sheet);
     void render_system(SDL_Renderer* renderer, SDL_Texture* sprite_sheet);
     void bubble_cleanup_system();
     void player_visual_system();
-    void destroy_game_entity(Entity e);
-    void game_init(b2WorldId physics_world);
     void sensor_events_system(b2WorldId physics_world);
     void enemy_spawn_system(b2WorldId physics_world);
     void enemy_ai_system();
 
+    void game_init(b2WorldId physics_world);
+    void destroy_game_entity(Entity e);
+    bool is_game_over();
+    float random_between(float min, float max);
 
-    void sound_system();
-    void level_progression_system();
 
     // **** Entities ****
     ent_type  create_player(float x, float y, b2WorldId physics_world);
@@ -175,7 +140,6 @@ namespace bubble_bobble
     ent_type  create_bounds(float x, float y, float width, float height,b2WorldId physics_world);
     ent_type  create_map(float x, float y, b2WorldId physics_world);
     ent_type  create_score_display(float x, float y);
-    bool is_game_over();
 }
 
     // **** Storage Types ****
@@ -204,13 +168,6 @@ namespace bubble_bobble
     struct bagel::Storage<bubble_bobble::PhysicsBody> final : NoInstance
     {
         using type = PackedStorage<bubble_bobble::PhysicsBody>;
-    };
-
-    // only some entities have these
-    template <>
-    struct bagel::Storage<bubble_bobble::Sound> final : NoInstance
-    {
-        using type = SparseStorage<bubble_bobble::Sound>;
     };
 
     template <>
@@ -247,12 +204,6 @@ namespace bubble_bobble
     struct bagel::Storage<bubble_bobble::Score> final : NoInstance
     {
         using type = SparseStorage<bubble_bobble::Score>;
-    };
-
-    template <>
-    struct bagel::Storage<bubble_bobble::LevelChanger> final : NoInstance
-    {
-        using type = SparseStorage<bubble_bobble::LevelChanger>;
     };
 
     // tags only

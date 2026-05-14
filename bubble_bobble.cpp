@@ -1,12 +1,10 @@
 #include "bubble_bobble.h"
-#include <cstdint>
 
 using namespace bagel;
 
 namespace bubble_bobble
 {
     const SDL_FRect GREEN_PLAYER = {170, 275, 95, 125};
-    const SDL_FRect BLUE_PLAYER = {645, 275, 95, 125};
     const SDL_FRect GREEN_PLAYER_OPEN = {515, 265, 105, 135};
     const SDL_FRect ENEMY_PURPLE = {175, 470, 75, 95};
     const SDL_FRect TRAPPED_ENEMY_BROWN = {1112, 460, 110, 115};
@@ -16,10 +14,8 @@ namespace bubble_bobble
     const SDL_FRect BANANA = {1235, 635, 105, 95};
     const SDL_FRect BEER = {1290, 485, 80, 105};
     const SDL_FRect PLATFORM = {150, 20, 500, 60};
-    const SDL_FRect BOUNDS_WALL = {20, 15, 120, 730};
     const SDL_FRect BOUNDS_TILE = {10, 20, 55, 55};
-    const SDL_FRect GAME_OVER_TEXT = {55, 865, 660, 150};
-    const SDL_FRect YOU_WIN_TEXT = {845, 865, 575, 150};
+    const SDL_FRect FRUIT_SPRITES[] = {APPLE,BANANA,BEER};
     const SDL_FRect DIGITS[10] = {
         {925, 128, 45, 55},    // 0
         {1000, 128, 35, 55},   // 1
@@ -33,7 +29,8 @@ namespace bubble_bobble
         {1225, 205, 45, 55}    // 9
     };
 
-    const SDL_FRect FRUIT_SPRITES[] = {APPLE,BANANA,BEER};
+    static bool game_over= false;
+    static int enemies_created = 0;
 
     constexpr uint64_t PLAYER_CATEGORY   = 0x0001;
     constexpr uint64_t PLATFORM_CATEGORY = 0x0002;
@@ -43,15 +40,9 @@ namespace bubble_bobble
     constexpr float ENEMY_SPEED = 4.5f;
     constexpr float JUMP_HEIGHT = -11.0f;
     constexpr float SCALE = 30.0f;
-    static bool game_over= false;
-    static int enemies_created = 0;
+
     constexpr int MAX_ENEMIES = 8;
     constexpr int ENEMY_RELOCATE_TIME = 600;
-
-    float random_between(float min, float max)
-    {
-        return min + SDL_randf() * (max - min);
-    }
 
     // **** Systems ****
     void movement_system()
@@ -186,268 +177,6 @@ namespace bubble_bobble
             }
         }
     }
-    void capture_system(b2WorldId physics_world)
-    {
-        Mask enemy_mask = MaskBuilder{}
-        .set<Enemy>()
-        .set<PhysicsBody>()
-        .set<Position>()
-        .build();
-
-        Mask bubble_mask = MaskBuilder{}
-        .set<Bubble>()
-        .set<PhysicsBody>()
-        .build();
-
-        const b2SensorEvents sensor_events =
-            b2World_GetSensorEvents(physics_world);
-
-        if (sensor_events.beginCount > 0)
-        {
-            SDL_Log("Sensor events: %d", sensor_events.beginCount);
-        }
-
-        for (int i = 0; i < sensor_events.beginCount; i++)
-        {
-            b2SensorBeginTouchEvent event =
-                sensor_events.beginEvents[i];
-
-            b2ShapeId sensor_shape = event.sensorShapeId;
-            b2ShapeId visitor_shape = event.visitorShapeId;
-
-            b2BodyId sensor_body =
-                b2Shape_GetBody(sensor_shape);
-
-            b2BodyId visitor_body =
-                b2Shape_GetBody(visitor_shape);
-
-            for (Entity enemy = Entity::first(); !enemy.eof(); enemy.next())
-            {
-                if (!enemy.test(enemy_mask))
-                    continue;
-
-                PhysicsBody& enemy_physics =
-                    enemy.get<PhysicsBody>();
-
-                if (!B2_ID_EQUALS(enemy_physics.body, sensor_body))
-                    continue;
-
-                for (Entity bubble = Entity::first(); !bubble.eof(); bubble.next())
-                {
-                    if (!bubble.test(bubble_mask))
-                        continue;
-
-                    PhysicsBody& bubble_physics =
-                        bubble.get<PhysicsBody>();
-
-                    if (!B2_ID_EQUALS(bubble_physics.body, visitor_body))
-                        continue;
-
-                    Position& enemy_position =
-                        enemy.get<Position>();
-
-                    create_trapped_enemy(enemy_position.x,enemy_position.y, physics_world);
-
-                    destroy_game_entity(bubble);
-                    destroy_game_entity(enemy);
-
-                    return;
-                }
-            }
-        }
-    }
-    void jump_system(b2WorldId physics_world)
-    {
-        Mask player_mask = MaskBuilder{}
-        .set<Player>()
-        .set<Position>()
-        .build();
-
-        Mask trapped_mask = MaskBuilder{}
-        .set<TrappedEnemy>()
-        .set<Position>()
-        .build();
-
-        for (Entity player = Entity::first(); !player.eof(); player.next())
-        {
-            if (!player.test(player_mask))
-                continue;
-
-            Position& player_pos = player.get<Position>();
-
-            for (Entity trapped = Entity::first(); !trapped.eof(); trapped.next())
-            {
-                if (!trapped.test(trapped_mask))
-                    continue;
-
-                Position& trapped_pos = trapped.get<Position>();
-
-                float dx = player_pos.x - trapped_pos.x;
-                float dy = player_pos.y - trapped_pos.y;
-
-                float distance_squared = dx * dx + dy * dy;
-
-                if (distance_squared < 80.0f * 80.0f) {
-                    create_fruit(trapped_pos.x,trapped_pos.y,100,physics_world);
-
-                    destroy_game_entity(trapped);
-                    break;
-                }
-            }
-        }
-    }
-    void collection_system(b2WorldId physics_world)
-    {
-        Mask fruit_mask = MaskBuilder{}
-        .set<Collection>()
-        .set<PhysicsBody>()
-        .set<Score>()
-        .build();
-
-        Mask player_mask = MaskBuilder{}
-        .set<Player>()
-        .set<PhysicsBody>()
-        .set<Score>()
-        .build();
-
-        const b2SensorEvents sensor_events =
-            b2World_GetSensorEvents(physics_world);
-
-        for (int i = 0; i < sensor_events.beginCount; i++)
-        {
-            b2SensorBeginTouchEvent event =
-                sensor_events.beginEvents[i];
-
-            b2BodyId sensor_body =
-                b2Shape_GetBody(event.sensorShapeId);
-
-            b2BodyId visitor_body =
-                b2Shape_GetBody(event.visitorShapeId);
-
-            for (Entity fruit = Entity::first(); !fruit.eof(); fruit.next())
-            {
-                if (!fruit.test(fruit_mask))
-                    continue;
-
-                PhysicsBody& fruit_physics =
-                    fruit.get<PhysicsBody>();
-
-                if (!B2_ID_EQUALS(fruit_physics.body, sensor_body))
-                    continue;
-
-                for (Entity player = Entity::first(); !player.eof(); player.next())
-                {
-                    if (!player.test(player_mask))
-                        continue;
-
-                    PhysicsBody& player_physics =
-                        player.get<PhysicsBody>();
-
-                    if (!B2_ID_EQUALS(player_physics.body, visitor_body))
-                        continue;
-
-                    Score& player_score =
-                        player.get<Score>();
-
-                    Score& fruit_score =
-                        fruit.get<Score>();
-
-                    player_score.points +=
-                        fruit_score.points;
-
-                    Player& player_component =
-                        player.get<Player>();
-
-                    player_component.eating_timer = 20;
-
-                    SDL_Log(
-                        "Score: %d",
-                        player_score.points
-                    );
-
-                    destroy_game_entity(fruit);
-
-                    return;
-                }
-            }
-        }
-    }
-    void damage_system(b2WorldId physics_world)
-{
-    Mask enemy_mask = MaskBuilder{}
-        .set<Enemy>()
-        .set<PhysicsBody>()
-        .build();
-
-    Mask player_mask = MaskBuilder{}
-        .set<Player>()
-        .set<PhysicsBody>()
-        .set<Position>()
-        .build();
-
-    const b2SensorEvents sensor_events =
-        b2World_GetSensorEvents(physics_world);
-
-    for (int i = 0; i < sensor_events.beginCount; i++)
-    {
-        b2SensorBeginTouchEvent event =
-            sensor_events.beginEvents[i];
-
-        b2BodyId sensor_body =
-            b2Shape_GetBody(event.sensorShapeId);
-
-        b2BodyId visitor_body =
-            b2Shape_GetBody(event.visitorShapeId);
-
-        for (Entity enemy = Entity::first(); !enemy.eof(); enemy.next())
-        {
-            if (!enemy.test(enemy_mask))
-                continue;
-
-            PhysicsBody& enemy_physics = enemy.get<PhysicsBody>();
-
-            if (!B2_ID_EQUALS(enemy_physics.body, sensor_body))
-                continue;
-
-            for (Entity player = Entity::first(); !player.eof(); player.next())
-            {
-                if (!player.test(player_mask))
-                    continue;
-
-                PhysicsBody& player_physics = player.get<PhysicsBody>();
-
-                if (!B2_ID_EQUALS(player_physics.body, visitor_body))
-                    continue;
-
-                Player& player_component = player.get<Player>();
-
-                if (player_component.invincible_timer > 0)
-                    return;
-
-                player_component.lives--;
-                player_component.invincible_timer = 90;
-
-                SDL_Log("Player hit! Lives: %d", player_component.lives);
-
-                Position& player_position = player.get<Position>();
-                player_position.x = 300.0f;
-                player_position.y = 430.0f;
-
-                b2Body_SetTransform(
-                    player_physics.body,
-                    {300.0f / SCALE, 430.0f / SCALE},
-                    b2Body_GetRotation(player_physics.body)
-                );
-                b2Body_SetLinearVelocity(player_physics.body,{0.0f, 0.0f});
-
-                if (player_component.lives <= 0)
-                    SDL_Log("Game Over");
-
-                return;
-            }
-        }
-    }
-}
     void player_visual_system()
     {
         Mask player_mask = MaskBuilder{}
@@ -719,21 +448,6 @@ namespace bubble_bobble
             position.y = body_position.y * SCALE - drawing.height / 2.0f;
         }
     }
-    void destroy_game_entity(Entity e)
-    {
-        if (e.has<PhysicsBody>())
-        {
-            PhysicsBody& physics = e.get<PhysicsBody>();
-
-            if (B2_IS_NON_NULL(physics.body))
-            {
-                b2DestroyBody(physics.body);
-                physics.body = b2_nullBodyId;
-            }
-        }
-
-        e.destroy();
-    }
     void sensor_events_system(b2WorldId physics_world)
 {
     Mask enemy_mask = MaskBuilder{}
@@ -766,8 +480,7 @@ namespace bubble_bobble
         .set<Position>()
         .build();
 
-    const b2SensorEvents sensor_events =
-        b2World_GetSensorEvents(physics_world);
+    const b2SensorEvents sensor_events = b2World_GetSensorEvents(physics_world);
 
     Entity bubble_to_destroy{{-1}};
     Entity enemy_to_destroy{{-1}};
@@ -778,21 +491,15 @@ namespace bubble_bobble
     float fruit_x = 0.0f;
     float fruit_y = 0.0f;
 
-
     bool should_create_trapped_enemy = false;
     float trapped_x = 0.0f;
     float trapped_y = 0.0f;
 
     for (int i = 0; i < sensor_events.beginCount; i++)
     {
-        b2SensorBeginTouchEvent event =
-            sensor_events.beginEvents[i];
-
-        b2BodyId sensor_body =
-            b2Shape_GetBody(event.sensorShapeId);
-
-        b2BodyId visitor_body =
-            b2Shape_GetBody(event.visitorShapeId);
+        b2SensorBeginTouchEvent event = sensor_events.beginEvents[i];
+        b2BodyId sensor_body = b2Shape_GetBody(event.sensorShapeId);
+        b2BodyId visitor_body = b2Shape_GetBody(event.visitorShapeId);
 
         // Enemy sensor touched something
         for (Entity enemy = Entity::first(); !enemy.eof(); enemy.next())
@@ -800,8 +507,7 @@ namespace bubble_bobble
             if (!enemy.test(enemy_mask))
                 continue;
 
-            PhysicsBody& enemy_physics =
-                enemy.get<PhysicsBody>();
+            PhysicsBody& enemy_physics = enemy.get<PhysicsBody>();
 
             if (!B2_ID_EQUALS(enemy_physics.body, sensor_body))
                 continue;
@@ -812,14 +518,12 @@ namespace bubble_bobble
                 if (!bubble.test(bubble_mask))
                     continue;
 
-                PhysicsBody& bubble_physics =
-                    bubble.get<PhysicsBody>();
+                PhysicsBody& bubble_physics = bubble.get<PhysicsBody>();
 
                 if (!B2_ID_EQUALS(bubble_physics.body, visitor_body))
                     continue;
 
-                Position& enemy_position =
-                    enemy.get<Position>();
+                Position& enemy_position = enemy.get<Position>();
 
                 trapped_x = enemy_position.x;
                 trapped_y = enemy_position.y;
@@ -835,25 +539,18 @@ namespace bubble_bobble
                 if (!player.test(player_mask))
                     continue;
 
-                PhysicsBody& player_physics =
-                    player.get<PhysicsBody>();
+                PhysicsBody& player_physics = player.get<PhysicsBody>();
 
                 if (!B2_ID_EQUALS(player_physics.body, visitor_body))
                     continue;
 
-                Player& player_component =
-                    player.get<Player>();
+                Player& player_component = player.get<Player>();
 
                 if (player_component.invincible_timer > 0)
                     continue;
 
                 player_component.lives--;
                 player_component.invincible_timer = 90;
-
-              //  Position& player_position =player.get<Position>();
-
-              //  player_position.x = 120.0f;
-              //  player_position.y = 500.0f;
 
                 b2Body_SetTransform(
                     player_physics.body,
@@ -877,8 +574,7 @@ namespace bubble_bobble
             if (!fruit.test(collection_mask))
                 continue;
 
-            PhysicsBody& fruit_physics =
-                fruit.get<PhysicsBody>();
+            PhysicsBody& fruit_physics = fruit.get<PhysicsBody>();
 
             if (!B2_ID_EQUALS(fruit_physics.body, sensor_body))
                 continue;
@@ -888,22 +584,16 @@ namespace bubble_bobble
                 if (!player.test(player_mask))
                     continue;
 
-                PhysicsBody& player_physics =
-                    player.get<PhysicsBody>();
+                PhysicsBody& player_physics = player.get<PhysicsBody>();
 
                 if (!B2_ID_EQUALS(player_physics.body, visitor_body))
                     continue;
 
-                Score& player_score =
-                    player.get<Score>();
-
-                Score& fruit_score =
-                    fruit.get<Score>();
+                Score& player_score = player.get<Score>();
+                Score& fruit_score = fruit.get<Score>();
 
                 player_score.points += fruit_score.points;
-
-                Player& player_component =
-                    player.get<Player>();
+                Player& player_component = player.get<Player>();
 
                 player_component.eating_timer = 20;
                 fruit_to_destroy = fruit;
@@ -914,8 +604,7 @@ namespace bubble_bobble
             if (!trapped.test(trapped_mask))
                 continue;
 
-            PhysicsBody& trapped_physics =
-                trapped.get<PhysicsBody>();
+            PhysicsBody& trapped_physics = trapped.get<PhysicsBody>();
 
             if (!B2_ID_EQUALS(trapped_physics.body, sensor_body))
                 continue;
@@ -925,14 +614,10 @@ namespace bubble_bobble
                 if (!player.test(player_mask))
                     continue;
 
-                PhysicsBody& player_physics =
-                    player.get<PhysicsBody>();
+                PhysicsBody& player_physics = player.get<PhysicsBody>();
 
                 if (!B2_ID_EQUALS(player_physics.body, visitor_body))
                     continue;
-
-                Position& trapped_position =
-                    trapped.get<Position>();
 
                 fruit_x = random_between(100.0f, 1100.0f);
                 fruit_y = random_between(100.0f, 580.0f);
@@ -1027,10 +712,6 @@ namespace bubble_bobble
             }
         }
     }
-    bool is_game_over()
-    {
-        return game_over;
-    }
     void enemy_spawn_system(b2WorldId physics_world)
     {
         static int spawn_timer = 180;
@@ -1066,10 +747,11 @@ namespace bubble_bobble
         );
     }
 
-
-    void sound_system() {}
-    void level_progression_system() {}
-
+    // // // //
+    bool is_game_over()
+    {
+        return game_over;
+    }
     void game_init(b2WorldId physics_world)
     {
         create_player(390.0f, 85.0f, physics_world);
@@ -1100,6 +782,26 @@ namespace bubble_bobble
 
         create_score_display(30.0f, 50.0f);
     }
+    void destroy_game_entity(Entity e)
+    {
+        if (e.has<PhysicsBody>())
+        {
+            PhysicsBody& physics = e.get<PhysicsBody>();
+
+            if (B2_IS_NON_NULL(physics.body))
+            {
+                b2DestroyBody(physics.body);
+                physics.body = b2_nullBodyId;
+            }
+        }
+
+        e.destroy();
+    }
+    float random_between(float min, float max)
+    {
+        return min + SDL_randf() * (max - min);
+    }
+
     // **** Entities ****
     ent_type create_player(float x, float y, b2WorldId physics_world)
     {
@@ -1124,7 +826,6 @@ namespace bubble_bobble
         player.addAll(
             Position{x, y},
             Movement{0.0f, 0.0f},
-            Sound{-1},
             Drawing{GREEN_PLAYER, 60.0f, 75.0f},
             InputControl{true},
             BubbleShooter{0},
@@ -1143,11 +844,7 @@ namespace bubble_bobble
         b2BodyDef body_def = b2DefaultBodyDef();
 
         body_def.type = b2_dynamicBody;
-        body_def.position = {
-            x / SCALE,
-            y / SCALE
-        };
-
+        body_def.position = {x / SCALE,y / SCALE};
         body_def.gravityScale = 0.0f;
 
         b2BodyId body = b2CreateBody(physics_world,&body_def);
@@ -1175,7 +872,6 @@ namespace bubble_bobble
             Position{x, y},
             Movement{velocity_x, velocity_y},
             Drawing{BUBBLE, 60.0f, 60.0f},
-            Sound{-1},
             Bubble{240},
             PhysicsBody{body ,b2_nullShapeId}
         );
@@ -1236,21 +932,6 @@ namespace bubble_bobble
         return enemy.entity();
     }
 
-    ent_type create_pressure_enemy(float x, float y)
-    {
-        Entity pressure_enemy = Entity::create();
-
-        pressure_enemy.addAll(
-            Position{x, y},
-            Movement{0.0f, 0.0f},
-            Drawing{ENEMY_PURPLE, 70.0f, 80.0f},
-            Damage{1},
-            Enemy{}
-        );
-
-        return pressure_enemy.entity();
-    }
-
     ent_type create_trapped_enemy(float x, float y, b2WorldId physics_world)
     {
         Entity trapped_enemy = Entity::create();
@@ -1258,10 +939,7 @@ namespace bubble_bobble
 
         body_def.type = b2_staticBody;
 
-        body_def.position = {
-            x / SCALE,
-            y / SCALE
-        };
+        body_def.position = {x / SCALE,y / SCALE};
 
         b2BodyId body = b2CreateBody(
             physics_world,
@@ -1301,10 +979,7 @@ namespace bubble_bobble
 
         body_def.type = b2_staticBody;
 
-        body_def.position = {
-            x / SCALE,
-            y / SCALE
-        };
+        body_def.position = {x / SCALE,y / SCALE};
 
         b2BodyId body = b2CreateBody(
             physics_world,
@@ -1333,7 +1008,6 @@ namespace bubble_bobble
             Drawing{fruit_sprite, 55.0f, 55.0f},
             Collection{},
             Score{points},
-            Sound{-1},
             PhysicsBody{body, b2_nullShapeId}
         );
 
@@ -1392,35 +1066,6 @@ namespace bubble_bobble
         }
 
         return bounds.entity();
-    }
-
-    ent_type create_map(float x, float y, b2WorldId physics_world)
-    {
-        Entity map = Entity::create();
-        b2BodyDef body_def = b2DefaultBodyDef();
-        body_def.type = b2_staticBody;
-        body_def.position = {
-            (x + 200.0f) / SCALE,
-            (y + 20.0f) / SCALE
-        };
-
-        b2BodyId body = b2CreateBody(physics_world, &body_def);
-
-        b2Polygon box = b2MakeBox(
-            200.0f / SCALE,
-            20.0f / SCALE
-        );
-
-        b2ShapeDef shape_def = b2DefaultShapeDef();
-        b2CreatePolygonShape(body, &shape_def, &box);
-
-        map.addAll(
-            Position{x, y},
-            Drawing{PLATFORM, 400.0f, 40.0f},
-            PhysicsBody{body}
-        );
-
-        return map.entity();
     }
 
     ent_type create_platform(float x,float y,float width,float height,b2WorldId physics_world)
